@@ -12,7 +12,7 @@
 
 #define button0_msk 1 << 11 // button0 is gpio pin 11 in .dts
 #define button1_msk 1 << 12 // button1 is gpio pin 12 in the .dts
-//note: button2 on the dk is pin 24.
+#define button2_msk 1 << 24 // button2 is gpio pin 24 in the .dts
 
 /*
  * Get button configuration from the devicetree sw0 alias. This is mandatory.
@@ -25,11 +25,17 @@
 #if !DT_NODE_HAS_STATUS(SW1_NODE, okay)
 #error "Unsupported board: sw1 devicetree alias is not defined"
 #endif
+#define SW2_NODE	DT_ALIAS(sw2)
+#if !DT_NODE_HAS_STATUS(SW2_NODE, okay)
+#error "Unsupported board: sw2 devicetree alias is not defined"
+#endif
 
 static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET_OR(SW0_NODE, gpios,
 							      {0});
 static const struct gpio_dt_spec button1 = GPIO_DT_SPEC_GET_OR(SW1_NODE, gpios,
 							      {0});
+static const struct gpio_dt_spec button2 = GPIO_DT_SPEC_GET_OR(SW2_NODE, gpios, 
+								  {0});
 static struct gpio_callback button_cb_data;
 
 /*
@@ -51,8 +57,7 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb,
 {
 	printk("Button pressed at %" PRIu32 "\n", k_cycle_get_32());
     printk("pins var: %d\n", pins);
-	printk("button0.pin = %d, button1pin = %d\n", button0.pin, button1.pin);
-	printk("1 << 11 = %d, 1 << 12 = %d\n", (1 << 11), (1 << 12));
+	printk("1 << 11 = %d, 1 << 12 = %d, 1 << 24 = %d\n", (1 << 11), (1 << 12), (1 << 24));
 
     switch(pins)
     {
@@ -63,6 +68,10 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb,
         case button1_msk:
             printk("BUTTON1\n");
             break;
+
+		case button2_msk:
+			printk("BUTTON2\n");
+			break;
 
         default:
             printk("?");
@@ -120,11 +129,36 @@ int init_gpio(void)
 		return 0;
 	}
 
-	gpio_init_callback(&button_cb_data, button_pressed, BIT(button0.pin) | BIT(button1.pin));
+	//! button2 (Note: you can do this in a loop and in a prettier way.)
+	// you can peep dk_buttons_and_leds.h and .c to see.
+	if (!gpio_is_ready_dt(&button2)) {
+		printk("Error: button1 device %s is not ready\n",
+		       button2.port->name);
+		return 0;
+	}
+
+	ret = gpio_pin_configure_dt(&button2, GPIO_INPUT);
+	if (ret != 0) {
+		printk("Error %d: failed to configure %s pin %d\n",
+		       ret, button2.port->name, button2.pin);
+		return 0;
+	}
+
+	ret = gpio_pin_interrupt_configure_dt(&button2,
+					      GPIO_INT_EDGE_TO_ACTIVE);
+	if (ret != 0) {
+		printk("Error %d: failed to configure interrupt on %s pin %d\n",
+			ret, button2.port->name, button2.pin);
+		return 0;
+	}
+
+	gpio_init_callback(&button_cb_data, button_pressed, BIT(button0.pin) | BIT(button1.pin) | BIT(button2.pin));
 	gpio_add_callback(button0.port, &button_cb_data);
     gpio_add_callback(button1.port, &button_cb_data);
+	gpio_add_callback(button2.port, &button_cb_data);
 	printk("Set up button0 at %s pin %d\n", button0.port->name, button0.pin);
     printk("Set up button1 at %s pin %d\n", button1.port->name, button1.pin);
+	printk("Set up button2 at %s pin %d\n", button2.port->name, button2.pin);
 
     /*
     !!!! LEDs !!!!
