@@ -41,19 +41,23 @@ static struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led2), gpios,
 static struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led3), gpios,
 						     {0});                             
 
+
 void button_pressed(const struct device *dev, struct gpio_callback *cb,
 		    uint32_t pins)
 {
 	printk("Button pressed at %" PRIu32 "\n", k_cycle_get_32());
-    printk("%d\n", pins);
+    printk("pins var: %d\n", pins);
+	printk("button0.pin = %d, button1pin = %d\n", button0.pin, button1.pin);
+	printk("1 << 11 = %d, 1 << 12 = %d\n", (1 << 11), (1 << 12));
+
     switch(pins)
     {
-        case 2048:
-            printk("BUTTON1\n");
+        case 1 << 11: // 11 is button0's gpio pin# in the device tree source (.dts)
+            printk("BUTTON0\n");
             break;
 
-        case 4096:
-            printk("BUTTON2\n");
+        case 1 << 12:
+            printk("BUTTON1\n");
             break;
 
         default:
@@ -204,10 +208,10 @@ void blinkythread(void)
                 gpio_pin_toggle_dt(&led1);
                 break;
             case 2:
-                gpio_pin_toggle_dt(&led2);
+                gpio_pin_toggle_dt(&led3);
                 break;
             case 3:
-                gpio_pin_toggle_dt(&led3);
+                gpio_pin_toggle_dt(&led2);
                 break;
         }
 
