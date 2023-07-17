@@ -10,6 +10,10 @@
 #define BLINKYTHREAD_PRIORITY 3
 #define STACKSIZE 256
 
+#define button0_msk 1 << 11 // button0 is gpio pin 11 in .dts
+#define button1_msk 1 << 12 // button1 is gpio pin 12 in the .dts
+//note: button2 on the dk is pin 24.
+
 /*
  * Get button configuration from the devicetree sw0 alias. This is mandatory.
  */
@@ -52,11 +56,11 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb,
 
     switch(pins)
     {
-        case 1 << 11: // 11 is button0's gpio pin# in the device tree source (.dts)
+        case button0_msk: // 11 is button0's gpio pin# in the device tree source (.dts)
             printk("BUTTON0\n");
             break;
 
-        case 1 << 12:
+        case button1_msk:
             printk("BUTTON1\n");
             break;
 
