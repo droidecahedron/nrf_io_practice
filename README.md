@@ -18,6 +18,8 @@ Functions pretty similarly to my caf sample.
 > 
 https://user-images.githubusercontent.com/63935881/264470500-d66a88fd-9624-4068-be93-851c2d8ae153.mp4
 
+> example of slow button press terminal output... speed wont change. You might see speed change if the switch bounces a lot. These switches on the nrf dks can wear out and be bouncy.
+
 ![image](https://github.com/droidecahedron/nrf_io_practice/assets/63935881/f0c1f42c-c220-4114-8f7b-a181ec1ef428)
 
 
