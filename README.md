@@ -1,11 +1,9 @@
-.. _button-sample:
+# nrf_io_practice
 
-Button
-######
+gpio practice repo for nrf in nrf connect sdk (NCS)
+Feel free to use whatever here you need, there is some clean up to be done.
 
-Overview
-********
-
+# Overview
 A simple button demo showcasing the use of GPIO input with interrupts.
 The sample prints a message to the console each time a button is pressed.
 Functions pretty similarly to my caf sample.
