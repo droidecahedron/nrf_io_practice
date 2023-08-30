@@ -15,7 +15,8 @@ Functions pretty similarly to my caf sample.
 - Press button 1 twice slowly, you'll get a print message telling you that you were slow on the second press.
 - Press button 2 to switch which direction the scrolling is in.
 
-# This video is from [droidecahedron/caf_click](https://github.com/droidecahedron/nrf_caf_click), this repo functions differently. See description above.
+## This video is from [droidecahedron/caf_click](https://github.com/droidecahedron/nrf_caf_click)
+### This repo functions differently. See description above.
 https://user-images.githubusercontent.com/63935881/264470500-d66a88fd-9624-4068-be93-851c2d8ae153.mp4
 
 # Requirements
