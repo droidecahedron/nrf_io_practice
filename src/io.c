@@ -14,6 +14,9 @@
 #define button1_msk 1 << 12 // button1 is gpio pin 12 in the .dts
 #define button2_msk 1 << 24 // button2 is gpio pin 24 in the .dts
 
+#define BLINKY_SLEEP_FAST 100
+#define BLINKY_SLEEP_SLOW 250
+
 /*
  * Get button configuration from the devicetree sw0 alias. This is mandatory.
  */
@@ -51,6 +54,14 @@ static struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led2), gpios,
 static struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led3), gpios,
 						     {0});                             
 
+							 
+volatile bool dir = true;    // true = forward, false = reverse
+volatile bool speed = false; // true = fast, false = slow.
+
+uint8_t cnt = 0; // led position
+
+uint8_t clicks = 0;
+K_TIMER_DEFINE(click_timer, NULL, NULL);
 
 void button_pressed(const struct device *dev, struct gpio_callback *cb,
 		    uint32_t pins)
@@ -62,15 +73,41 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb,
     switch(pins)
     {
         case button0_msk: // 11 is button0's gpio pin# in the device tree source (.dts)
-            printk("BUTTON0\n");
+            printk("BUTTON1\n");
+			if(clicks==0)
+			{
+				clicks++;
+				/* start one shot timer that expires after 1000 ms */
+				k_timer_start(&click_timer, K_MSEC(1000), K_NO_WAIT);
+			}
+			else
+			{
+				/* check timer status */
+				if (k_timer_status_get(&click_timer) > 0) {
+					/* timer has expired */
+					printk("Took you a while to press the second time.\n");
+				} else if (k_timer_remaining_get(&click_timer) == 0) {
+					/* timer was stopped (by someone else) before expiring */
+				} else {
+					/* timer is still running */
+					speed = !speed; // double click = speed change
+				}
+				clicks = 0;
+			}
             break;
 
         case button1_msk:
-            printk("BUTTON1\n");
+            printk("BUTTON2\n");
+			gpio_pin_set_dt(&led0, 0);
+            gpio_pin_set_dt(&led1, 0);
+            gpio_pin_set_dt(&led2, 0);
+            gpio_pin_set_dt(&led3, 0);
+			dir = !dir; // reverse direction
+			(dir) ? (cnt = 0) : (cnt = 3);
             break;
 
 		case button2_msk:
-			printk("BUTTON2\n");
+			printk("BUTTON3\n");
 			break;
 
         default:
@@ -78,6 +115,8 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb,
     }
 }
 
+//! (Note: you can do this in a loop and in a prettier way.)
+// you can peep dk_buttons_and_leds.h and .c to see. this is not very dry.
 int init_gpio(void)
 {
     int ret;
@@ -129,8 +168,7 @@ int init_gpio(void)
 		return 0;
 	}
 
-	//! button2 (Note: you can do this in a loop and in a prettier way.)
-	// you can peep dk_buttons_and_leds.h and .c to see.
+	//! button2
 	if (!gpio_is_ready_dt(&button2)) {
 		printk("Error: button1 device %s is not ready\n",
 		       button2.port->name);
@@ -233,11 +271,9 @@ int init_gpio(void)
 
 void blinkythread(void)
 {
-    /* If we have an LED, match its state to the button's. */
-    int cnt = 0;
     while(1)
     {
-        switch(cnt++ & 0x3)
+        switch(cnt & 0x3)
         {
             case 0:
                 gpio_pin_toggle_dt(&led0);
@@ -252,8 +288,8 @@ void blinkythread(void)
                 gpio_pin_toggle_dt(&led2);
                 break;
         }
-
-        k_msleep(100);
+		(dir) ? cnt++ : cnt--;
+        (speed) ? k_msleep(BLINKY_SLEEP_FAST) : k_msleep(BLINKY_SLEEP_SLOW);
     }
 }
 
