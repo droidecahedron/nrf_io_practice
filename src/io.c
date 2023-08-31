@@ -184,7 +184,7 @@ int init_gpio(void)
     }
     for (size_t idx = 0; idx < ARRAY_SIZE(leds); idx++)
     {
-        LOG_INF("Set up led%d at %s pin%d", 
+        LOG_INF("Set up led%d at %s pin%d",
                 idx, leds[idx].port->name, leds[idx].pin);
     }
 
