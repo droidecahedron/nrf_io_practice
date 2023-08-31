@@ -24,7 +24,9 @@ https://user-images.githubusercontent.com/63935881/264470500-d66a88fd-9624-4068-
 
 
 # Requirements
-## nRF52840DK (but honestly it should work on the 52833, 7002, 5340dk as well)
+## nRF52840DK
+>  (but honestly it should work on the 52833, 7002, 5340dk as well as ublox nina-b3, laird bl653/4, and fanstel bc840 modules (as long as there arent device tree issues.))
+
 <img src="https://github.com/droidecahedron/nrf-blueberry/assets/63935881/12612a0e-9f81-4431-8b22-f69704248f89" width=25% height=25%>
 
 The board hardware must have a push button connected via a GPIO pin. These are
