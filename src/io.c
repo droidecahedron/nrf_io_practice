@@ -2,116 +2,117 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/util.h>
-#include <zephyr/sys/printk.h>
 #include <inttypes.h>
+#include <soc.h>
+
+#include <zephyr/logging/log.h>
+// #include <zephyr/sys/printk.h>
 
 #include "inc/io.h"
 
+LOG_MODULE_REGISTER(IO_C);
+
+//--- Blinky Thread Defines
 #define BLINKYTHREAD_PRIORITY 3
 #define STACKSIZE 256
-
-#define button0_msk 1 << 11 // button0 is gpio pin 11 in .dts
-#define button1_msk 1 << 12 // button1 is gpio pin 12 in the .dts
-#define button2_msk 1 << 24 // button2 is gpio pin 24 in the .dts
 
 #define BLINKY_SLEEP_FAST 100
 #define BLINKY_SLEEP_SLOW 250
 
-/*
- * Get button configuration from the devicetree sw0 alias. This is mandatory.
- */
-#define SW0_NODE	DT_ALIAS(sw0)
-#if !DT_NODE_HAS_STATUS(SW0_NODE, okay)
-#error "Unsupported board: sw0 devicetree alias is not defined"
-#endif
-#define SW1_NODE	DT_ALIAS(sw1)
-#if !DT_NODE_HAS_STATUS(SW1_NODE, okay)
-#error "Unsupported board: sw1 devicetree alias is not defined"
-#endif
-#define SW2_NODE	DT_ALIAS(sw2)
-#if !DT_NODE_HAS_STATUS(SW2_NODE, okay)
-#error "Unsupported board: sw2 devicetree alias is not defined"
-#endif
+//--- DK GPIO Defines
+#define BUTTONS_NODE DT_PATH(buttons)
+#define LEDS_NODE DT_PATH(leds)
 
-static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET_OR(SW0_NODE, gpios,
-							      {0});
-static const struct gpio_dt_spec button1 = GPIO_DT_SPEC_GET_OR(SW1_NODE, gpios,
-							      {0});
-static const struct gpio_dt_spec button2 = GPIO_DT_SPEC_GET_OR(SW2_NODE, gpios, 
-								  {0});
-static struct gpio_callback button_cb_data;
+#define GPIO0_DEV DEVICE_DT_GET(DT_NODELABEL(gpio0))
+#define GPIO1_DEV DEVICE_DT_GET_OR_NULL(DT_NODELABEL(gpio1))
 
-/*
- * The led0 devicetree alias is optional. If present, we'll use it
- * to turn on the LED whenever the button is pressed.
- */
-static struct gpio_dt_spec led0 = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led0), gpios,
-						     {0});
-static struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led1), gpios,
-						     {0});
-static struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led2), gpios,
-						     {0});
-static struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led3), gpios,
-						     {0});                             
+/* GPIO0, GPIO1 and GPIO expander devices require different interrupt flags. */
+#define FLAGS_GPIO_0_1_ACTIVE GPIO_INT_LEVEL_ACTIVE
+#define FLAGS_GPIO_EXP_ACTIVE (GPIO_INT_EDGE | GPIO_INT_HIGH_1 | GPIO_INT_LOW_0 | GPIO_INT_ENABLE)
 
-							 
+static const struct gpio_dt_spec buttons[] = {
+#if DT_NODE_EXISTS(BUTTONS_NODE)
+    DT_FOREACH_CHILD(BUTTONS_NODE, GPIO_SPEC_AND_COMMA)
+#endif
+};
+
+static const struct gpio_dt_spec leds[] = {
+#if DT_NODE_EXISTS(LEDS_NODE)
+    DT_FOREACH_CHILD(LEDS_NODE, GPIO_SPEC_AND_COMMA)
+#endif
+};
+
+static struct gpio_callback button_callback;
+
+// --- app logic
 volatile bool dir = true;    // true = forward, false = reverse
 volatile bool speed = false; // true = fast, false = slow.
+uint8_t cnt = 0;             // led position
 
-uint8_t cnt = 0; // led position
-
-uint8_t clicks = 0;
+// --- Timer for double press detection
+uint8_t clicks = 0; // sentinel var for timer logic
 K_TIMER_DEFINE(click_timer, NULL, NULL);
 
 void button_pressed(const struct device *dev, struct gpio_callback *cb,
-		    uint32_t pins)
+                    uint32_t pins)
 {
-	printk("Button pressed at %" PRIu32 "\n", k_cycle_get_32());
-    printk("pins var: %d\n", pins);
-	printk("1 << 11 = %d, 1 << 12 = %d, 1 << 24 = %d\n", (1 << 11), (1 << 12), (1 << 24));
+    LOG_INF("Button pressed at %" PRIu32, k_cycle_get_32());
+    LOG_INF("pins var: %d", pins);
 
-    switch(pins)
+    switch (pins)
     {
-        case button0_msk: // 11 is button0's gpio pin# in the device tree source (.dts)
-            printk("BUTTON1\n");
-			if(clicks==0)
-			{
-				clicks++;
-				/* start one shot timer that expires after 1000 ms */
-				k_timer_start(&click_timer, K_MSEC(1000), K_NO_WAIT);
-			}
-			else
-			{
-				/* check timer status */
-				if (k_timer_status_get(&click_timer) > 0) {
-					/* timer has expired */
-					printk("Took you a while to press the second time.\n");
-				} else if (k_timer_remaining_get(&click_timer) == 0) {
-					/* timer was stopped (by someone else) before expiring */
-				} else {
-					/* timer is still running */
-					speed = !speed; // double click = speed change
-				}
-				clicks = 0;
-			}
-            break;
+    case dk_button1_msk: // 11 is button0's gpio pin# in the device tree source (.dts)
+        LOG_INF("BUTTON1");
+        if (clicks == 0)
+        {
+            clicks++;
+            /* start one shot timer that expires after 1000 ms */
+            k_timer_start(&click_timer, K_MSEC(1000), K_NO_WAIT);
+        }
+        else
+        {
+            /* check timer status */
+            if (k_timer_status_get(&click_timer) > 0)
+            {
+                /* timer has expired */
+                LOG_INF("Took you a while to press the second time.");
+            }
+            else if (k_timer_remaining_get(&click_timer) == 0)
+            {
+                /* timer was stopped (by someone else) before expiring */
+            }
+            else
+            {
+                /* timer is still running */
+                speed = !speed; // double click = speed change
+            }
+            clicks = 0;
+        }
+        break;
 
-        case button1_msk:
-            printk("BUTTON2\n");
-			gpio_pin_set_dt(&led0, 0);
-            gpio_pin_set_dt(&led1, 0);
-            gpio_pin_set_dt(&led2, 0);
-            gpio_pin_set_dt(&led3, 0);
-			dir = !dir; // reverse direction
-			(dir) ? (cnt = 0) : (cnt = 3);
-            break;
+    case dk_button2_msk:
+        LOG_INF("BUTTON2");
 
-		case button2_msk:
-			printk("BUTTON3\n");
-			break;
+        // clear LEDs
+        for (size_t led_idx = 0; led_idx < ARRAY_SIZE(leds); led_idx++)
+        {
+            gpio_pin_set_dt(&leds[led_idx], 0);
+        }
+        // reverse direction, set countdown or up start val.
+        dir = !dir;
+        (dir) ? (cnt = 0) : (cnt = ARRAY_SIZE(leds) - 1);
+        break;
 
-        default:
-            printk("?");
+    case dk_button3_msk:
+        LOG_INF("BUTTON3");
+        break;
+
+    case dk_button4_msk:
+        LOG_INF("BUTTON4");
+        break;
+
+    default:
+        LOG_INF("?");
     }
 }
 
@@ -119,179 +120,103 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb,
 // you can peep dk_buttons_and_leds.h and .c to see. this is not very dry.
 int init_gpio(void)
 {
-    int ret;
+    int err;
 
-    /*
-    !!!! BUTTONs !!!!
-    */
-   // Button0
-    if (!gpio_is_ready_dt(&button0)) {
-		printk("Error: button0 device %s is not ready\n",
-		       button0.port->name);
-		return 0;
-	}
+    //--- LEDs
+    for (size_t i = 0; i < ARRAY_SIZE(leds); i++)
+    {
+        err = gpio_pin_configure_dt(&leds[i], GPIO_OUTPUT);
+        if (err)
+        {
+            LOG_ERR("Cannot configure LED gpio");
+            return err;
+        }
+    }
 
-	ret = gpio_pin_configure_dt(&button0, GPIO_INPUT);
-	if (ret != 0) {
-		printk("Error %d: failed to configure %s pin %d\n",
-		       ret, button0.port->name, button0.pin);
-		return 0;
-	}
+    //--- Buttons
+    for (size_t i = 0; i < ARRAY_SIZE(buttons); i++)
+    {
+        /* Enable pull resistor towards the inactive voltage. */
+        gpio_flags_t flags =
+            buttons[i].dt_flags & GPIO_ACTIVE_LOW ? GPIO_PULL_UP : GPIO_PULL_DOWN;
+        err = gpio_pin_configure_dt(&buttons[i], GPIO_INPUT | flags);
 
-	ret = gpio_pin_interrupt_configure_dt(&button0,
-					      GPIO_INT_EDGE_TO_ACTIVE);
-	if (ret != 0) {
-		printk("Error %d: failed to configure interrupt on %s pin %d\n",
-			ret, button0.port->name, button0.pin);
-		return 0;
-	}
+        if (err)
+        {
+            LOG_ERR("Cannot configure button gpio");
+            return err;
+        }
+    }
 
-    //! button1
-    if (!gpio_is_ready_dt(&button1)) {
-		printk("Error: button1 device %s is not ready\n",
-		       button1.port->name);
-		return 0;
-	}
+    uint32_t pin_mask = 0;
 
-	ret = gpio_pin_configure_dt(&button1, GPIO_INPUT);
-	if (ret != 0) {
-		printk("Error %d: failed to configure %s pin %d\n",
-		       ret, button1.port->name, button1.pin);
-		return 0;
-	}
+    for (size_t i = 0; i < ARRAY_SIZE(buttons); i++)
+    {
+        err = gpio_pin_interrupt_configure_dt(&buttons[i],
+                                              GPIO_INT_EDGE_TO_ACTIVE);
+        if (err)
+        {
+            LOG_ERR("Cannot disable callbacks()");
+            return err;
+        }
 
-	ret = gpio_pin_interrupt_configure_dt(&button1,
-					      GPIO_INT_EDGE_TO_ACTIVE);
-	if (ret != 0) {
-		printk("Error %d: failed to configure interrupt on %s pin %d\n",
-			ret, button1.port->name, button1.pin);
-		return 0;
-	}
+        pin_mask |= BIT(buttons[i].pin);
+    }
 
-	//! button2
-	if (!gpio_is_ready_dt(&button2)) {
-		printk("Error: button1 device %s is not ready\n",
-		       button2.port->name);
-		return 0;
-	}
+    gpio_init_callback(&button_callback, button_pressed, pin_mask);
 
-	ret = gpio_pin_configure_dt(&button2, GPIO_INPUT);
-	if (ret != 0) {
-		printk("Error %d: failed to configure %s pin %d\n",
-		       ret, button2.port->name, button2.pin);
-		return 0;
-	}
+    for (size_t i = 0; i < ARRAY_SIZE(buttons); i++)
+    {
+        err = gpio_add_callback(buttons[i].port, &button_callback);
+        if (err)
+        {
+            LOG_ERR("Cannot add callback");
+            return err;
+        }
+    }
 
-	ret = gpio_pin_interrupt_configure_dt(&button2,
-					      GPIO_INT_EDGE_TO_ACTIVE);
-	if (ret != 0) {
-		printk("Error %d: failed to configure interrupt on %s pin %d\n",
-			ret, button2.port->name, button2.pin);
-		return 0;
-	}
+    // log infodump
+    LOG_INF("GPIO initialized");
+    for (size_t idx = 0; idx < ARRAY_SIZE(buttons); idx++)
+    {
+        LOG_INF("Set up button%d at %s pin%d",
+                idx, buttons[idx].port->name, buttons[idx].pin);
+    }
+    for (size_t idx = 0; idx < ARRAY_SIZE(leds); idx++)
+    {
+        LOG_INF("Set up led%d at %s pin%d", 
+                idx, leds[idx].port->name, leds[idx].pin);
+    }
 
-	gpio_init_callback(&button_cb_data, button_pressed, BIT(button0.pin) | BIT(button1.pin) | BIT(button2.pin));
-	gpio_add_callback(button0.port, &button_cb_data);
-    gpio_add_callback(button1.port, &button_cb_data);
-	gpio_add_callback(button2.port, &button_cb_data);
-	printk("Set up button0 at %s pin %d\n", button0.port->name, button0.pin);
-    printk("Set up button1 at %s pin %d\n", button1.port->name, button1.pin);
-	printk("Set up button2 at %s pin %d\n", button2.port->name, button2.pin);
-
-    /*
-    !!!! LEDs !!!!
-    */
-    //LED0
-	if (led0.port && !device_is_ready(led0.port)) {
-		printk("Error %d: led0 device %s is not ready; ignoring it\n",
-		       ret, led0.port->name);
-		led0.port = NULL;
-	}
-	if (led0.port) {
-		ret = gpio_pin_configure_dt(&led0, GPIO_OUTPUT);
-		if (ret != 0) {
-			printk("Error %d: failed to configure led0 device %s pin %d\n",
-			       ret, led0.port->name, led0.pin);
-			led0.port = NULL;
-		} else {
-			printk("Set up LED at %s pin %d\n", led0.port->name, led0.pin);
-		}
-	}
-    //LED1
-    if (led1.port && !device_is_ready(led1.port)) {
-		printk("Error %d: led1 device %s is not ready; ignoring it\n",
-		       ret, led1.port->name);
-		led1.port = NULL;
-	}
-	if (led1.port) {
-		ret = gpio_pin_configure_dt(&led1, GPIO_OUTPUT);
-		if (ret != 0) {
-			printk("Error %d: failed to configure led1 device %s pin %d\n",
-			       ret, led1.port->name, led1.pin);
-			led1.port = NULL;
-		} else {
-			printk("Set up LED at %s pin %d\n", led1.port->name, led1.pin);
-		}
-	}
-    //LED2
-    if (led2.port && !device_is_ready(led2.port)) {
-		printk("Error %d: led2 device %s is not ready; ignoring it\n",
-		       ret, led2.port->name);
-		led2.port = NULL;
-	}
-	if (led2.port) {
-		ret = gpio_pin_configure_dt(&led2, GPIO_OUTPUT);
-		if (ret != 0) {
-			printk("Error %d: failed to configure led2 device %s pin %d\n",
-			       ret, led2.port->name, led2.pin);
-			led2.port = NULL;
-		} else {
-			printk("Set up LED at %s pin %d\n", led2.port->name, led2.pin);
-		}
-	}
-    //LED3
-    if (led3.port && !device_is_ready(led3.port)) {
-		printk("Error %d: led3 device %s is not ready; ignoring it\n",
-		       ret, led3.port->name);
-		led3.port = NULL;
-	}
-	if (led3.port) {
-		ret = gpio_pin_configure_dt(&led3, GPIO_OUTPUT);
-		if (ret != 0) {
-			printk("Error %d: failed to configure led3 device %s pin %d\n",
-			       ret, led3.port->name, led3.pin);
-			led3.port = NULL;
-		} else {
-			printk("Set up LED at %s pin %d\n", led3.port->name, led3.pin);
-		}
-	}
-
-    return 1;
+    // helpful to translate pins var
+    LOG_INF("1 << 11 = %d, 1 << 12 = %d", (1 << 11), (1 << 12));
+    LOG_INF("1 << 24 = %d, 1 << 25 = %d", (1 << 24), (1 << 25));
+    return err;
 }
 
 void blinkythread(void)
 {
-    while(1)
+    while (1)
     {
-        switch(cnt & 0x3)
+        // 1->2->4->3 deliberate, looks better on DK
+        switch (cnt & 0x3)
         {
-            case 0:
-                gpio_pin_toggle_dt(&led0);
-                break;
-            case 1:
-                gpio_pin_toggle_dt(&led1);
-                break;
-            case 2:
-                gpio_pin_toggle_dt(&led3);
-                break;
-            case 3:
-                gpio_pin_toggle_dt(&led2);
-                break;
+        case 0:
+            gpio_pin_toggle_dt(&leds[0]);
+            break;
+        case 1:
+            gpio_pin_toggle_dt(&leds[1]);
+            break;
+        case 2:
+            gpio_pin_toggle_dt(&leds[3]);
+            break;
+        case 3:
+            gpio_pin_toggle_dt(&leds[2]);
+            break;
         }
-		(dir) ? cnt++ : cnt--;
+        (dir) ? cnt++ : cnt--;
         (speed) ? k_msleep(BLINKY_SLEEP_FAST) : k_msleep(BLINKY_SLEEP_SLOW);
     }
 }
-
 
 K_THREAD_DEFINE(blinkythread_id, STACKSIZE, blinkythread, NULL, NULL, NULL, BLINKYTHREAD_PRIORITY, 0, 0);
