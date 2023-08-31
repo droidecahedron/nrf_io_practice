@@ -6,7 +6,7 @@ Feel free to use whatever here you need, there is some clean up to be done.
 # Overview
 A simple button demo showcasing the use of GPIO input with interrupts.
 The sample prints a message to the console each time a button is pressed.
-Functions pretty similarly to my caf sample.
+Functions pretty similarly to my caf sample. I don't really account for bouncy buttons here.
 
 # Function
 - Press button 1 twice quickly (within 1s) to alternate LED scroll speed.
