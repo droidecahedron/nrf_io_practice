@@ -1,0 +1,40 @@
+// To get started, press Ctrl+Space to bring up the completion menu and view the available nodes.
+
+// You can also use the buttons in the sidebar to perform actions on nodes.
+// Actions currently available include:
+
+// * Enabling / disabling the node
+// * Adding the bus to a bus
+// * Removing the node
+// * Connecting ADC channels
+
+// For more help, browse the DeviceTree documentation at https://docs.zephyrproject.org/latest/guides/dts/index.html
+// You can also visit the nRF DeviceTree extension documentation at https://nrfconnect.github.io/vscode-nrf-connect/devicetree/nrfdevicetree.html
+/*
+ * Copyright (c) 2023 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+
+ / {
+	chosen {
+		nordic,nus-uart = &uart0;
+	};
+};
+
+/ {
+    gpiocustom {
+        compatible = "gpio-keys";
+        gpiocus0: gpiocus_0 {
+            gpios = <&gpio0 28 GPIO_ACTIVE_LOW>;
+            label = "Custom gpio 28";
+        };
+        gpiocus1: gpiocus_1 {
+            gpios = <&gpio0 29 GPIO_ACTIVE_LOW>;
+            label = "Custom gpio 29";
+        };
+    };
+    aliases {
+        gpiocus0 = &gpiocus0;
+    };
+};

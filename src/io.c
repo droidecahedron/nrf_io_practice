@@ -44,6 +44,12 @@ static const struct gpio_dt_spec leds[] = {
 
 static struct gpio_callback button_callback;
 
+//! extra gpio pins on ard header, presently unused
+#define MODE_BUTTON DT_ALIAS(gpiocus0) // !io!
+static const struct gpio_dt_spec lowprio_button = GPIO_DT_SPEC_GET_OR(MODE_BUTTON, gpios, {0});
+#define CRITICAL_BUTTON DT_ALIAS(gpiocus1)
+static const struct gpio_dt_spec highprio_button = GPIO_DT_SPEC_GET_OR(CRITICAL_BUTTON, gpios, {0});
+
 // --- app logic
 volatile bool dir = true;    // true = forward, false = reverse
 volatile bool speed = false; // true = fast, false = slow.
